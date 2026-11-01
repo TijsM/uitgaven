@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Receipt } from "@/lib/extract";
+import type { ExpenseRow } from "@/lib/notion";
 
 type Draft = {
   description: string;
@@ -16,6 +17,9 @@ type Draft = {
 const emptyDraft: Draft = { description: "", vendor: "", date: "", amount: "", vat: null, category: "", notes: "" };
 
 const money = (n: number | null) => (n == null ? "" : n.toFixed(2).replace(".", ","));
+const euro = (n: number) => new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" }).format(n);
+const shortDate = (d: string) =>
+  new Date(`${d}T12:00:00`).toLocaleDateString("nl-NL", { day: "numeric", month: "short" });
 const parseMoney = (s: string) => (s.trim() ? Number(s.replace(/\s/g, "").replace(",", ".")) : null);
 
 // Shrink phone photos before upload: faster to send and well within API limits.
@@ -178,6 +182,8 @@ export default function Home() {
   const [methods, setMethods] = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [vendors, setVendors] = useState<string[]>([]);
+  const [expenses, setExpenses] = useState<ExpenseRow[] | null>(null);
+  const [databaseUrl, setDatabaseUrl] = useState<string | null>(null);
 
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -197,7 +203,9 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (password) loadOptions(password);
+    if (!password) return;
+    loadOptions(password);
+    loadExpenses(password);
   }, [password]);
 
   async function api(path: string, init: RequestInit = {}) {
@@ -209,6 +217,14 @@ export default function Home() {
     }
     if (!res.ok) throw new Error(await res.text());
     return res.json();
+  }
+
+  async function loadExpenses(pw: string) {
+    const res = await fetch("/api/expenses", { headers: { "x-app-password": pw } });
+    if (!res.ok) return;
+    const data = await res.json();
+    setExpenses(data.expenses);
+    setDatabaseUrl(data.databaseUrl);
   }
 
   async function loadOptions(pw: string) {
@@ -291,6 +307,7 @@ export default function Home() {
       setVendors(add(vendors, draft.vendor.trim()));
       reset();
       setStatus("✓ Opgeslagen in Notion");
+      loadExpenses(password!);
     } catch {
       setStatus("❌ Opslaan mislukt, probeer opnieuw");
     } finally {
@@ -328,10 +345,23 @@ export default function Home() {
     </>
   );
 
-  if (!file)
+  if (!file) {
+    const now = new Date();
+    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const monthTotal = (expenses ?? [])
+      .filter((e) => e.date?.startsWith(month))
+      .reduce((sum, e) => sum + (e.amount ?? 0), 0);
+
     return (
       <main>
-        <h1>Uitgaven</h1>
+        <header className="top">
+          <h1>Uitgaven</h1>
+          {databaseUrl && (
+            <a className="notion-link" href={databaseUrl} target="_blank" rel="noreferrer">
+              Open in Notion ↗
+            </a>
+          )}
+        </header>
         <button className="primary big" onClick={() => camera.current?.click()}>
           📷 Foto maken
         </button>
@@ -340,8 +370,37 @@ export default function Home() {
         </button>
         {inputs}
         {status && <p className="status">{status}</p>}
+
+        <section className="overview">
+          <div className="overview-head">
+            <label>Laatste uitgaven</label>
+            {expenses && <span className="month-total">Deze maand {euro(monthTotal)}</span>}
+          </div>
+          {expenses === null ? (
+            <p className="hint">Laden…</p>
+          ) : expenses.length === 0 ? (
+            <p className="hint">Nog geen uitgaven.</p>
+          ) : (
+            <ul className="expenses">
+              {expenses.map((e) => (
+                <li key={e.id}>
+                  <a href={e.url} target="_blank" rel="noreferrer">
+                    <div className="expense-main">
+                      <span className="expense-title">{e.description || "Zonder omschrijving"}</span>
+                      <span className="expense-meta">
+                        {[e.date && shortDate(e.date), e.vendor, e.paymentMethod].filter(Boolean).join(" · ")}
+                      </span>
+                    </div>
+                    <span className="expense-amount">{e.amount != null ? euro(e.amount) : "–"}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </main>
     );
+  }
 
   const newVendor = !!draft.vendor.trim() && !vendors.includes(draft.vendor.trim());
 

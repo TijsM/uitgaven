@@ -1,4 +1,4 @@
-import { Client } from "@notionhq/client";
+import { Client, isFullPage, type PageObjectResponse } from "@notionhq/client";
 
 export const notion = new Client({ auth: process.env.NOTION_TOKEN });
 
@@ -9,6 +9,55 @@ export async function selectOptions(property: string): Promise<string[]> {
   const ds = await notion.dataSources.retrieve({ data_source_id: dataSourceId() });
   const prop = ds.properties[property];
   return prop?.type === "select" ? prop.select.options.map((o) => o.name) : [];
+}
+
+export type ExpenseRow = {
+  id: string;
+  url: string;
+  description: string;
+  vendor: string | null;
+  date: string | null;
+  amount: number | null;
+  category: string | null;
+  paymentMethod: string | null;
+};
+
+type Prop = PageObjectResponse["properties"][string];
+const plain = (p?: Prop) =>
+  p?.type === "title" ? p.title.map((t) => t.plain_text).join("") : p?.type === "rich_text" ? p.rich_text.map((t) => t.plain_text).join("") : "";
+const select = (p?: Prop) => (p?.type === "select" ? (p.select?.name ?? null) : null);
+
+// Latest expenses (newest date first) plus a link to the database itself.
+export async function listExpenses(): Promise<{ expenses: ExpenseRow[]; databaseUrl: string | null }> {
+  const [ds, res] = await Promise.all([
+    notion.dataSources.retrieve({ data_source_id: dataSourceId() }),
+    notion.dataSources.query({
+      data_source_id: dataSourceId(),
+      sorts: [
+        { property: "Datum", direction: "descending" },
+        { timestamp: "created_time", direction: "descending" },
+      ],
+      page_size: 50,
+    }),
+  ]);
+
+  const expenses = res.results.filter(isFullPage).map((page) => {
+    const p = page.properties;
+    return {
+      id: page.id,
+      url: page.url,
+      description: plain(p.Omschrijving),
+      vendor: select(p.Leverancier),
+      date: p.Datum?.type === "date" ? (p.Datum.date?.start ?? null) : null,
+      amount: p.Bedrag?.type === "number" ? p.Bedrag.number : null,
+      category: select(p.Categorie),
+      paymentMethod: select(p.Betaalmethode),
+    };
+  });
+
+  const databaseUrl =
+    "parent" in ds && ds.parent.type === "database_id" ?`https://www.notion.so/${ds.parent.database_id.replace(/-/g, "")}` : null;
+  return { expenses, databaseUrl };
 }
 
 export async function uploadFile(file: Blob, filename: string): Promise<string> {

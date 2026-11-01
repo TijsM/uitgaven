@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Receipt } from "@/lib/extract";
 import type { ExpenseRow } from "@/lib/notion";
+import { InstallPrompt } from "./install-prompt";
 
 type Draft = {
   description: string;
@@ -332,6 +333,7 @@ export default function Home() {
           }}
         >
           <h1>Uitgaven</h1>
+          <InstallPrompt />
           <input name="password" type="password" placeholder="Wachtwoord" autoFocus />
           <button className="primary">Inloggen</button>
         </form>
@@ -355,6 +357,7 @@ export default function Home() {
     return (
       <main>
         <h1>Uitgaven</h1>
+        <InstallPrompt />
         <button className="primary big" onClick={() => camera.current?.click()}>
           📷 Foto maken
         </button>

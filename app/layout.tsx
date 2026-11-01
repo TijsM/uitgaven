@@ -3,7 +3,10 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Uitgaven",
+  applicationName: "Uitgaven",
   appleWebApp: { capable: true, title: "Uitgaven", statusBarStyle: "default" },
+  // Older iOS versions only open full screen from the home screen with the apple-prefixed tag
+  other: { "apple-mobile-web-app-capable": "yes" },
 };
 
 export const viewport: Viewport = { themeColor: "#fafaf9" };

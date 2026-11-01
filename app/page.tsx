@@ -19,6 +19,10 @@ const emptyDraft: Draft = { description: "", vendor: "", date: "", amount: "", v
 
 const money = (n: number | null) => (n == null ? "" : n.toFixed(2).replace(".", ","));
 const euro = (n: number) => new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" }).format(n);
+const monthLabel = (ym: string) => {
+  const label = new Date(`${ym}-01T12:00:00`).toLocaleDateString("nl-NL", { month: "long", year: "numeric" });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+};
 const shortDate = (d: string) =>
   new Date(`${d}T12:00:00`).toLocaleDateString("nl-NL", { day: "numeric", month: "short" });
 // The fields an expense needs to count as complete; anything missing is highlighted in the overview.
@@ -375,11 +379,12 @@ export default function Home() {
   );
 
   if (!file && !manual) {
-    const now = new Date();
-    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    const monthTotal = (expenses ?? [])
-      .filter((e) => e.date?.startsWith(month))
-      .reduce((sum, e) => sum + (e.amount ?? 0), 0);
+    // Group by the month of the receipt date (list is already sorted newest first)
+    const groups = new Map<string, ExpenseRow[]>();
+    for (const e of expenses ?? []) {
+      const key = e.date?.slice(0, 7) ?? "";
+      groups.set(key, [...(groups.get(key) ?? []), e]);
+    }
     const incomplete = (expenses ?? []).filter((e) => missingFields(e).length > 0).length;
 
     return (
@@ -401,10 +406,7 @@ export default function Home() {
         {status && <p className="status">{status}</p>}
 
         <section className="overview">
-          <div className="overview-head">
-            <label>Laatste uitgaven</label>
-            {expenses && <span className="month-total">Deze maand {euro(monthTotal)}</span>}
-          </div>
+          <label>Laatste uitgaven</label>
           {incomplete > 0 && (
             <p className="incomplete-note">
               ⚠️ {incomplete} {incomplete === 1 ? "uitgave is" : "uitgaven zijn"} nog niet compleet
@@ -415,25 +417,35 @@ export default function Home() {
           ) : expenses.length === 0 ? (
             <p className="hint">Nog geen uitgaven.</p>
           ) : (
-            <ul className="expenses">
-              {expenses.map((e) => {
-                const missing = missingFields(e);
-                return (
-                  <li key={e.id} className={missing.length ? "incomplete" : undefined}>
-                    <a href={e.url} target="_blank" rel="noreferrer">
-                      <div className="expense-main">
-                        <span className="expense-title">{e.description || "Zonder omschrijving"}</span>
-                        <span className="expense-meta">
-                          {[e.date && shortDate(e.date), e.vendor, e.paymentMethod].filter(Boolean).join(" · ")}
-                        </span>
-                        {missing.length > 0 && <span className="expense-missing">Ontbreekt: {missing.join(", ")}</span>}
-                      </div>
-                      <span className="expense-amount">{e.amount != null ? euro(e.amount) : "–"}</span>
-                    </a>
-                  </li>
-                );
-              })}
-            </ul>
+            [...groups].map(([key, items]) => (
+              <div key={key || "none"} className="month-group">
+                <div className="month-head">
+                  <span>{key ? monthLabel(key) : "Zonder datum"}</span>
+                  <span>{euro(items.reduce((sum, e) => sum + (e.amount ?? 0), 0))}</span>
+                </div>
+                <ul className="expenses">
+                  {items.map((e) => {
+                    const missing = missingFields(e);
+                    return (
+                      <li key={e.id} className={missing.length ? "incomplete" : undefined}>
+                        <a href={e.url} target="_blank" rel="noreferrer">
+                          <div className="expense-main">
+                            <span className="expense-title">{e.description || "Zonder omschrijving"}</span>
+                            <span className="expense-meta">
+                              {[e.date && shortDate(e.date), e.vendor, e.paymentMethod].filter(Boolean).join(" · ")}
+                            </span>
+                            {missing.length > 0 && (
+                              <span className="expense-missing">Ontbreekt: {missing.join(", ")}</span>
+                            )}
+                          </div>
+                          <span className="expense-amount">{e.amount != null ? euro(e.amount) : "–"}</span>
+                        </a>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))
           )}
           {databaseUrl && (
             <a className="secondary table-link" href={databaseUrl} target="_blank" rel="noreferrer">

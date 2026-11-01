@@ -313,17 +313,6 @@ textarea {
   margin-top: 8px;
 }
 
-.overview-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-}
-
-.month-total {
-  font-size: 12px;
-  font-weight: 600;
-  color: #57534e;
-}
 
 .expenses {
   list-style: none;
@@ -469,4 +458,19 @@ textarea {
   font-size: 12px;
   font-weight: 600;
   color: #b45309;
+}
+
+/* Month groups in the overview */
+.month-group + .month-group {
+  margin-top: 14px;
+}
+
+.month-head {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 4px 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #44403c;
+  font-variant-numeric: tabular-nums;
 }

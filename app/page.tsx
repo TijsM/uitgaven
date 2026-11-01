@@ -187,6 +187,7 @@ export default function Home() {
   const [databaseUrl, setDatabaseUrl] = useState<string | null>(null);
 
   const [file, setFile] = useState<File | null>(null);
+  const [manual, setManual] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [upload, setUpload] = useState<{ fileUploadId: string | null; filename: string } | null>(null);
@@ -273,8 +274,18 @@ export default function Home() {
     }
   }
 
+  function startManual() {
+    const d = new Date();
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    setStatus(null);
+    setUpload(null);
+    setDraft({ ...emptyDraft, date: today });
+    setManual(true);
+  }
+
   function reset() {
     if (preview) URL.revokeObjectURL(preview);
+    setManual(false);
     setFile(null);
     setPreview(null);
     if (camera.current) camera.current.value = "";
@@ -298,7 +309,7 @@ export default function Home() {
           notes: draft.notes || null,
           paymentMethod: method,
           fileUploadId: upload?.fileUploadId,
-          filename: upload?.filename ?? file?.name,
+          filename: upload?.filename ?? file?.name ?? "",
         }),
       });
       localStorage.setItem("method", method);
@@ -347,7 +358,7 @@ export default function Home() {
     </>
   );
 
-  if (!file) {
+  if (!file && !manual) {
     const now = new Date();
     const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     const monthTotal = (expenses ?? [])
@@ -361,9 +372,14 @@ export default function Home() {
         <button className="primary big" onClick={() => camera.current?.click()}>
           📷 Foto maken
         </button>
-        <button className="secondary" onClick={() => picker.current?.click()}>
-          📄 Bestand kiezen
-        </button>
+        <div className="row">
+          <button className="secondary" onClick={() => picker.current?.click()}>
+            📄 Bestand kiezen
+          </button>
+          <button className="secondary" onClick={startManual}>
+            ✍️ Handmatig
+          </button>
+        </div>
         {inputs}
         {status && <p className="status">{status}</p>}
 
@@ -408,15 +424,19 @@ export default function Home() {
   return (
     <main>
       <form className={analyzing ? "review analyzing" : "review"} onSubmit={save}>
-        <div className="preview">
-          {preview ? <img src={preview} alt="Bon" /> : <span className="doc">📄 {file.name}</span>}
-          {analyzing && (
-            <div className="scan">
-              <div className="scan-line" />
-              <span className="scan-label">Bon wordt gelezen…</span>
-            </div>
-          )}
-        </div>
+        {file ? (
+          <div className="preview">
+            {preview ? <img src={preview} alt="Bon" /> : <span className="doc">📄 {file.name}</span>}
+            {analyzing && (
+              <div className="scan">
+                <div className="scan-line" />
+                <span className="scan-label">Bon wordt gelezen…</span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <h1>Nieuwe uitgave</h1>
+        )}
         {status && <p className="status">{status}</p>}
 
         <section>
@@ -425,6 +445,7 @@ export default function Home() {
             value={draft.description}
             onChange={(description) => setDraft({ ...draft, description })}
             singleLine
+            autoFocus={manual}
             required
             disabled={analyzing}
           />

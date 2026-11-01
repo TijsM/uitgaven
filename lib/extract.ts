@@ -11,7 +11,7 @@ const Receipt = z.object({
   amount: z.number().nullable().describe("Totaalbedrag inclusief btw"),
   vat: z.number().nullable().describe("Totaal btw-bedrag, null als niet vermeld"),
   category: z.string().nullable().describe("Categorie: kies bij voorkeur een bestaande, maak alleen een nieuwe als niets past"),
-  notes: z.string().nullable().describe("Alleen relevante extra info (bv. valuta als die geen EUR is), anders null"),
+  notes: z.string().nullable().describe("Meestal null. Alleen iets wat afwijkt en belangrijk is (bv. valuta geen EUR, factuur op bedrijfsnaam). Geen samenvatting, controle of betaalwijze"),
 });
 
 export type Receipt = z.infer<typeof Receipt>;
@@ -27,7 +27,7 @@ export async function extractReceipt(file: Blob, categories: string[], vendors: 
         } as const);
 
   const response = await client.beta.messages.parse({
-    model: "claude-opus-5-5",
+    model: "claude-sonnet-5-5",
     max_tokens: 4000,
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",

@@ -16,8 +16,8 @@ export async function POST(req: Request) {
       console.error("Notion upload failed", err);
       return null;
     }),
-    selectOptions("Categorie")
-      .then((categories) => extractReceipt(file, categories))
+    Promise.all([selectOptions("Categorie"), selectOptions("Leverancier")])
+      .then(([categories, vendors]) => extractReceipt(file, categories, vendors))
       .catch((err) => {
         console.error("Extraction failed", err);
         return null;

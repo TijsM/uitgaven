@@ -3,19 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import type { Receipt } from "@/lib/extract";
 
-const PAID_BY = ["Tijs", "Amber"];
-
 type Draft = {
   description: string;
   vendor: string;
   date: string;
   amount: string;
-  vat: string;
+  vat: number | null;
   category: string;
   notes: string;
 };
 
-const emptyDraft: Draft = { description: "", vendor: "", date: "", amount: "", vat: "", category: "", notes: "" };
+const emptyDraft: Draft = { description: "", vendor: "", date: "", amount: "", vat: null, category: "", notes: "" };
 
 const money = (n: number | null) => (n == null ? "" : n.toFixed(2).replace(".", ","));
 const parseMoney = (s: string) => (s.trim() ? Number(s.replace(/\s/g, "").replace(",", ".")) : null);
@@ -39,6 +37,7 @@ async function shrink(file: File): Promise<File> {
 }
 
 // Notion-style picker: existing options as chips, plus creating a new one.
+// Values not yet in Notion get a "nieuw" badge so it's clear an option will be created.
 function Choice({
   options,
   value,
@@ -48,39 +47,40 @@ function Choice({
   options: string[];
   value: string;
   onChange: (v: string) => void;
-  placeholder?: string;
+  placeholder: string;
 }) {
   const [adding, setAdding] = useState(false);
   const [text, setText] = useState("");
-  const all = value && !options.includes(value) ? [...options, value] : options;
+  const isNew = !!value && !options.includes(value);
+  const all = isNew ? [value, ...options] : options;
 
   return (
     <div className="chips">
       {all.map((name) => (
         <button type="button" key={name} className={name === value ? "chip on" : "chip"} onClick={() => onChange(name)}>
           {name}
+          {isNew && name === value && <span className="badge">nieuw</span>}
         </button>
       ))}
-      {placeholder &&
-        (adding ? (
-          <input
-            className="chip-input"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), e.currentTarget.blur())}
-            onBlur={() => {
-              if (text.trim()) onChange(text.trim());
-              setText("");
-              setAdding(false);
-            }}
-            placeholder={placeholder}
-            autoFocus
-          />
-        ) : (
-          <button type="button" className="chip add" onClick={() => setAdding(true)}>
-            + Nieuw
-          </button>
-        ))}
+      {adding ? (
+        <input
+          className="chip-input"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), e.currentTarget.blur())}
+          onBlur={() => {
+            if (text.trim()) onChange(text.trim());
+            setText("");
+            setAdding(false);
+          }}
+          placeholder={placeholder}
+          autoFocus
+        />
+      ) : (
+        <button type="button" className="chip add" onClick={() => setAdding(true)}>
+          + Nieuw
+        </button>
+      )}
     </div>
   );
 }
@@ -89,13 +89,13 @@ export default function Home() {
   const [password, setPassword] = useState<string | null>(null);
   const [methods, setMethods] = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
+  const [vendors, setVendors] = useState<string[]>([]);
 
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [upload, setUpload] = useState<{ fileUploadId: string | null; filename: string } | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
-  const [paidBy, setPaidBy] = useState(PAID_BY[0]);
   const [method, setMethod] = useState("");
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -105,7 +105,6 @@ export default function Home() {
 
   useEffect(() => {
     setPassword(localStorage.getItem("password") ?? "");
-    setPaidBy(localStorage.getItem("paidBy") ?? PAID_BY[0]);
     setMethod(localStorage.getItem("method") ?? "");
   }, []);
 
@@ -130,6 +129,7 @@ export default function Home() {
     const data = await res.json();
     setMethods(data.paymentMethods);
     setCategories(data.categories);
+    setVendors(data.vendors);
   }
 
   async function start(picked: File | undefined) {
@@ -155,7 +155,7 @@ export default function Home() {
           vendor: r.vendor ?? "",
           date: r.date ?? "",
           amount: money(r.amount),
-          vat: money(r.vat),
+          vat: r.vat,
           category: r.category ?? "",
           notes: r.notes ?? "",
         });
@@ -185,22 +185,22 @@ export default function Home() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           description: draft.description,
-          vendor: draft.vendor || null,
+          vendor: draft.vendor.trim() || null,
           date: draft.date || null,
           amount: parseMoney(draft.amount),
-          vat: parseMoney(draft.vat),
+          vat: draft.vat,
           category: draft.category || null,
           notes: draft.notes || null,
-          paidBy,
           paymentMethod: method,
           fileUploadId: upload?.fileUploadId,
           filename: upload?.filename ?? file?.name,
         }),
       });
-      localStorage.setItem("paidBy", paidBy);
       localStorage.setItem("method", method);
-      if (!methods.includes(method)) setMethods([...methods, method]);
-      if (draft.category && !categories.includes(draft.category)) setCategories([...categories, draft.category]);
+      const add = (list: string[], v: string) => (v && !list.includes(v) ? [...list, v] : list);
+      setMethods(add(methods, method));
+      setCategories(add(categories, draft.category));
+      setVendors(add(vendors, draft.vendor.trim()));
       reset();
       setStatus("✓ Opgeslagen in Notion");
     } catch {
@@ -210,7 +210,7 @@ export default function Home() {
     }
   }
 
-  const set = (key: keyof Draft) => (e: React.ChangeEvent<HTMLInputElement>) =>
+  const set = (key: "description" | "vendor" | "date" | "amount" | "notes") => (e: React.ChangeEvent<HTMLInputElement>) =>
     setDraft({ ...draft, [key]: e.target.value });
 
   if (password === null) return null;
@@ -255,41 +255,48 @@ export default function Home() {
       </main>
     );
 
-  const loading = analyzing ? "Wordt gelezen…" : undefined;
+  const newVendor = !!draft.vendor.trim() && !vendors.includes(draft.vendor.trim());
 
   return (
     <main>
-      <form className="review" onSubmit={save}>
+      <form className={analyzing ? "review analyzing" : "review"} onSubmit={save}>
         <div className="preview">
-          {preview ? <img src={preview} alt="Bon" /> : <span>📄 {file.name}</span>}
-          {analyzing && <div className="reading">Bon wordt gelezen…</div>}
+          {preview ? <img src={preview} alt="Bon" /> : <span className="doc">📄 {file.name}</span>}
+          {analyzing && (
+            <div className="scan">
+              <div className="scan-line" />
+              <span className="scan-label">Bon wordt gelezen…</span>
+            </div>
+          )}
         </div>
         {status && <p className="status">{status}</p>}
 
         <section>
           <label>Omschrijving</label>
-          <input value={draft.description} onChange={set("description")} placeholder={loading} required disabled={analyzing} />
+          <input value={draft.description} onChange={set("description")} required disabled={analyzing} />
         </section>
         <div className="row">
           <section>
-            <label>Bedrag €</label>
-            <input value={draft.amount} onChange={set("amount")} inputMode="decimal" placeholder={loading} disabled={analyzing} />
+            <label>Totaal bedrag €</label>
+            <input value={draft.amount} onChange={set("amount")} inputMode="decimal" disabled={analyzing} />
+            {draft.vat != null && <p className="hint">waarvan btw € {money(draft.vat)}</p>}
           </section>
-          <section>
-            <label>BTW €</label>
-            <input value={draft.vat} onChange={set("vat")} inputMode="decimal" disabled={analyzing} />
-          </section>
-        </div>
-        <div className="row">
           <section>
             <label>Datum</label>
             <input type="date" value={draft.date} onChange={set("date")} disabled={analyzing} />
           </section>
-          <section>
-            <label>Leverancier</label>
-            <input value={draft.vendor} onChange={set("vendor")} disabled={analyzing} />
-          </section>
         </div>
+        <section>
+          <label>
+            Leverancier {newVendor && !analyzing && <span className="badge">nieuw</span>}
+          </label>
+          <input value={draft.vendor} onChange={set("vendor")} list="vendors" disabled={analyzing} />
+          <datalist id="vendors">
+            {vendors.map((v) => (
+              <option key={v} value={v} />
+            ))}
+          </datalist>
+        </section>
         <section>
           <label>Categorie</label>
           <Choice
@@ -298,10 +305,6 @@ export default function Home() {
             onChange={(category) => setDraft({ ...draft, category })}
             placeholder="Nieuwe categorie"
           />
-        </section>
-        <section>
-          <label>Betaald door</label>
-          <Choice options={PAID_BY} value={paidBy} onChange={setPaidBy} />
         </section>
         <section>
           <label>Betaalmethode</label>

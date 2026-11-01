@@ -5,6 +5,7 @@
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 15px;
   background: #fafaf9;
   color: #1c1917;
 }
@@ -12,45 +13,64 @@ body {
 main {
   max-width: 480px;
   margin: 0 auto;
-  padding: 32px 20px;
+  padding: 20px 16px;
   display: flex;
   flex-direction: column;
-  gap: 28px;
+  gap: 16px;
 }
 
 h1 {
-  margin: 0;
-  font-size: 28px;
+  margin: 0 0 4px;
+  font-size: 22px;
 }
 
 label {
-  display: block;
-  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
   font-weight: 600;
   color: #78716c;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-}
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
 }
 
 button,
 input {
   font: inherit;
-  font-size: 16px;
+  font-size: 16px; /* 16px keeps iOS from zooming in on focus */
+}
+
+input {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid #d6d3d1;
+  background: white;
+  width: 100%;
+  min-height: 38px;
+}
+
+input:disabled {
+  background: #f5f5f4;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .chip {
-  padding: 10px 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
   border-radius: 999px;
   border: 1px solid #d6d3d1;
   background: white;
   color: inherit;
+  font-size: 14px;
 }
 
 .chip.on {
@@ -64,39 +84,62 @@ input {
   color: #78716c;
 }
 
-input {
-  padding: 10px 14px;
-  border-radius: 12px;
-  border: 1px solid #d6d3d1;
-  width: 100%;
-}
-
 .chip-input {
   border-radius: 999px;
-  width: 180px;
+  width: 170px;
+  min-height: 0;
+  padding: 5px 12px;
+  font-size: 14px;
+}
+
+.badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #fde68a;
+  color: #78350f;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #78716c;
 }
 
 .primary {
-  padding: 14px;
+  padding: 11px;
   border: 0;
-  border-radius: 14px;
+  border-radius: 12px;
   background: #1c1917;
   color: white;
   font-weight: 600;
 }
 
 .primary.big {
-  padding: 22px;
-  font-size: 18px;
+  padding: 18px;
+  font-size: 17px;
 }
 
 .primary:disabled {
   opacity: 0.35;
 }
 
+.secondary {
+  padding: 11px;
+  border: 1px solid #d6d3d1;
+  border-radius: 12px;
+  background: white;
+  color: inherit;
+  font-weight: 600;
+}
+
 .status {
   margin: 0;
   text-align: center;
+  font-size: 14px;
   color: #57534e;
 }
 
@@ -106,26 +149,24 @@ form {
   gap: 12px;
 }
 
-.secondary {
-  padding: 14px;
-  border: 1px solid #d6d3d1;
-  border-radius: 14px;
-  background: white;
-  color: inherit;
-  font-weight: 600;
-}
-
 .review {
-  gap: 20px;
-  padding-bottom: 96px;
+  gap: 14px;
+  padding-bottom: 72px;
 }
 
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+/* Receipt preview with a scanning animation while it's being read */
 .preview {
   position: relative;
-  border-radius: 14px;
+  border-radius: 12px;
   overflow: hidden;
   background: #e7e5e4;
-  min-height: 80px;
+  min-height: 64px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -134,36 +175,69 @@ form {
 .preview img {
   display: block;
   width: 100%;
-  max-height: 260px;
+  max-height: 180px;
   object-fit: contain;
 }
 
-.reading {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(28, 25, 23, 0.55);
-  color: white;
-  font-weight: 600;
-  animation: pulse 1.4s ease-in-out infinite;
+.doc {
+  padding: 20px;
+  font-size: 14px;
 }
 
-@keyframes pulse {
-  50% {
-    opacity: 0.7;
+.scan {
+  position: absolute;
+  inset: 0;
+  background: rgba(28, 25, 23, 0.25);
+}
+
+.scan-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 40%;
+  background: linear-gradient(to bottom, transparent, rgba(253, 230, 138, 0.15) 70%, rgba(253, 230, 138, 0.9));
+  border-bottom: 2px solid #fbbf24;
+  box-shadow: 0 0 12px #fbbf24;
+  animation: scan 1.6s ease-in-out infinite alternate;
+}
+
+@keyframes scan {
+  from {
+    top: -40%;
+  }
+  to {
+    top: 100%;
   }
 }
 
-.row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+.scan-label {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(28, 25, 23, 0.8);
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
-input:disabled {
-  background: #f5f5f4;
+/* Shimmer on the fields that are about to be filled in */
+.analyzing input:disabled {
+  background: linear-gradient(90deg, #f5f5f4 0%, #e7e5e4 50%, #f5f5f4 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s linear infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
 }
 
 .actions {
@@ -171,12 +245,12 @@ input:disabled {
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
   background: #fafaf9;
   border-top: 1px solid #e7e5e4;
   display: grid;
   grid-template-columns: 1fr 2fr;
-  gap: 12px;
+  gap: 10px;
   max-width: 480px;
   margin: 0 auto;
 }

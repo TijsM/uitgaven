@@ -31,7 +31,7 @@ export type Expense = {
   vat?: number | null;
   category?: string | null;
   notes?: string | null;
-  paidBy: string;
+  paidBy?: string | null;
   paymentMethod: string;
   fileUploadId?: string | null;
   filename: string;
@@ -43,13 +43,13 @@ export async function createExpense(e: Expense) {
     parent: { type: "data_source_id", data_source_id: dataSourceId() },
     properties: {
       Omschrijving: { title: text(e.description) },
-      ...(e.vendor && { Leverancier: { rich_text: text(e.vendor) } }),
+      ...(e.vendor && { Leverancier: { select: { name: e.vendor.slice(0, 100) } } }),
       ...(e.date && { Datum: { date: { start: e.date } } }),
       ...(e.amount != null && { Bedrag: { number: e.amount } }),
       ...(e.vat != null && { BTW: { number: e.vat } }),
       ...(e.category && { Categorie: { select: { name: e.category } } }),
       ...(e.notes && { Notities: { rich_text: text(e.notes) } }),
-      "Betaald door": { select: { name: e.paidBy } },
+      ...(e.paidBy && { "Betaald door": { select: { name: e.paidBy } } }),
       Betaalmethode: { select: { name: e.paymentMethod } },
       ...(e.fileUploadId && {
         Bon: { files: [{ type: "file_upload", file_upload: { id: e.fileUploadId }, name: e.filename }] },

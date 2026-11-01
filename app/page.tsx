@@ -85,6 +85,63 @@ function Choice({
   );
 }
 
+// Text field with a dropdown of existing options. Opening it shows every option;
+// typing filters the list, and anything typed that isn't in it becomes a new option.
+function Combo({
+  options,
+  value,
+  onChange,
+  disabled,
+}: {
+  options: string[];
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState("");
+  const shown = options.filter((o) => o.toLowerCase().includes(filter.toLowerCase()));
+
+  return (
+    <div className="combo">
+      <input
+        value={value}
+        disabled={disabled}
+        onFocus={() => {
+          setFilter("");
+          setOpen(true);
+        }}
+        onBlur={() => setOpen(false)}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setFilter(e.target.value);
+          setOpen(true);
+        }}
+        onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), e.currentTarget.blur())}
+      />
+      {open && shown.length > 0 && (
+        <ul className="combo-list">
+          {shown.map((o) => (
+            <li
+              key={o}
+              className={o === value ? "on" : undefined}
+              // mousedown fires before the input's blur, so the pick isn't lost
+              onMouseDown={(e) => {
+                e.preventDefault();
+                onChange(o);
+                setOpen(false);
+                (document.activeElement as HTMLElement | null)?.blur();
+              }}
+            >
+              {o}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function Home() {
   const [password, setPassword] = useState<string | null>(null);
   const [methods, setMethods] = useState<string[]>([]);
@@ -210,7 +267,7 @@ export default function Home() {
     }
   }
 
-  const set = (key: "description" | "vendor" | "date" | "amount" | "notes") => (e: React.ChangeEvent<HTMLInputElement>) =>
+  const set = (key: "description" | "date" | "amount" | "notes") => (e: React.ChangeEvent<HTMLInputElement>) =>
     setDraft({ ...draft, [key]: e.target.value });
 
   if (password === null) return null;
@@ -290,12 +347,12 @@ export default function Home() {
           <label>
             Leverancier {newVendor && !analyzing && <span className="badge">nieuw</span>}
           </label>
-          <input value={draft.vendor} onChange={set("vendor")} list="vendors" disabled={analyzing} />
-          <datalist id="vendors">
-            {vendors.map((v) => (
-              <option key={v} value={v} />
-            ))}
-          </datalist>
+          <Combo
+            options={vendors}
+            value={draft.vendor}
+            onChange={(vendor) => setDraft({ ...draft, vendor })}
+            disabled={analyzing}
+          />
         </section>
         <section>
           <label>Categorie</label>

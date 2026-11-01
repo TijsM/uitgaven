@@ -254,3 +254,45 @@ form {
   max-width: 480px;
   margin: 0 auto;
 }
+
+/* Vendor dropdown */
+.combo {
+  position: relative;
+}
+
+.combo input {
+  padding-right: 32px;
+  background: white url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2378716c'/%3E%3C/svg%3E")
+    no-repeat right 12px center;
+}
+
+.combo-list {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+  background: white;
+  border: 1px solid #d6d3d1;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(28, 25, 23, 0.12);
+}
+
+.combo-list li {
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.combo-list li:hover {
+  background: #f5f5f4;
+}
+
+.combo-list li.on {
+  font-weight: 600;
+}

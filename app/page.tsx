@@ -354,14 +354,7 @@ export default function Home() {
 
     return (
       <main>
-        <header className="top">
-          <h1>Uitgaven</h1>
-          {databaseUrl && (
-            <a className="notion-link" href={databaseUrl} target="_blank" rel="noreferrer">
-              Open in Notion ↗
-            </a>
-          )}
-        </header>
+        <h1>Uitgaven</h1>
         <button className="primary big" onClick={() => camera.current?.click()}>
           📷 Foto maken
         </button>
@@ -396,6 +389,11 @@ export default function Home() {
                 </li>
               ))}
             </ul>
+          )}
+          {databaseUrl && (
+            <a className="secondary table-link" href={databaseUrl} target="_blank" rel="noreferrer">
+              📊 Open tabel in Notion ↗
+            </a>
           )}
         </section>
       </main>

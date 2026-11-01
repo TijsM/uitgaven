@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Receipt } from "@/lib/extract";
-import type { Expense, ExpenseRow } from "@/lib/notion";
+import type { Expense, ExpenseRow, TodoRow } from "@/lib/notion";
 import { dequeue, enqueue, readOutbox, type Queued } from "@/lib/outbox";
 import { InstallPrompt } from "./install-prompt";
 
@@ -202,6 +202,11 @@ export default function Home() {
   const [vendors, setVendors] = useState<string[]>([]);
   const [expenses, setExpenses] = useState<ExpenseRow[] | null>(null);
   const [databaseUrl, setDatabaseUrl] = useState<string | null>(null);
+  const [todos, setTodos] = useState<TodoRow[] | null>(null);
+  const [newTodo, setNewTodo] = useState({ description: "", amount: "" });
+  const [addingTodo, setAddingTodo] = useState(false);
+  // The "nog toe te voegen" item whose invoice is being added, if any
+  const [todo, setTodo] = useState<TodoRow | null>(null);
 
   const [file, setFile] = useState<File | null>(null);
   const [manual, setManual] = useState(false);
@@ -292,6 +297,7 @@ export default function Home() {
     if (!res.ok) return;
     const data = await res.json();
     setExpenses(data.expenses);
+    setTodos(data.todos ?? []);
     setDatabaseUrl(data.databaseUrl);
   }
 
@@ -315,7 +321,11 @@ export default function Home() {
     setStatus(null);
     setFile(picked);
     setPreview(picked.type.startsWith("image/") ? URL.createObjectURL(picked) : null);
-    setDraft(emptyDraft);
+    // When completing a "nog toe te voegen" item, start from what was noted down for it
+    const base: Draft = todo
+      ? { ...emptyDraft, description: todo.description, vendor: todo.vendor ?? "", amount: money(todo.amount), notes: todo.notes ?? "" }
+      : emptyDraft;
+    setDraft(base);
     setUpload(null);
     setAnalyzing(true);
     try {
@@ -329,13 +339,13 @@ export default function Home() {
       const r = res.receipt;
       if (r)
         setDraft({
-          description: r.description,
-          vendor: r.vendor ?? "",
+          description: base.description || r.description,
+          vendor: r.vendor ?? base.vendor,
           date: r.date ?? "",
-          amount: money(r.amount),
+          amount: r.amount != null ? money(r.amount) : base.amount,
           vat: r.vat,
           category: r.category ?? "",
-          notes: r.notes ?? "",
+          notes: r.notes ?? base.notes,
         });
       else setStatus("Kon de bon niet lezen, vul hem zelf in.");
     } catch {
@@ -358,6 +368,7 @@ export default function Home() {
   function reset() {
     if (preview) URL.revokeObjectURL(preview);
     setManual(false);
+    setTodo(null);
     setFile(null);
     setPreview(null);
     if (camera.current) camera.current.value = "";
@@ -378,6 +389,7 @@ export default function Home() {
       paymentMethod: method || null,
       fileUploadId: upload?.fileUploadId,
       filename: upload?.filename ?? file?.name ?? "",
+      todoId: todo?.id,
     };
     let queued = false;
     try {
@@ -403,6 +415,7 @@ export default function Home() {
       setMethods(add(methods, method));
       setCategories(add(categories, draft.category));
       setVendors(add(vendors, draft.vendor.trim()));
+      if (todo) setTodos((list) => list?.filter((t) => t.id !== todo.id) ?? null);
       reset();
       if (queued) {
         setStatus("📴 Offline bewaard, wordt naar Notion gestuurd zodra je weer online bent");
@@ -414,6 +427,42 @@ export default function Home() {
       setStatus("❌ Opslaan mislukt, probeer opnieuw");
     } finally {
       setSaving(false);
+    }
+  }
+
+  // Opens the camera or file picker; for a "nog toe te voegen" item the result completes that item.
+  function pick(input: React.RefObject<HTMLInputElement | null>, forTodo: TodoRow | null) {
+    setTodo(forTodo);
+    input.current?.click();
+  }
+
+  async function addTodo(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newTodo.description.trim()) return;
+    setAddingTodo(true);
+    try {
+      await api("/api/todos", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ description: newTodo.description.trim(), amount: parseMoney(newTodo.amount) }),
+      });
+      setNewTodo({ description: "", amount: "" });
+      await loadExpenses(password!);
+    } catch {
+      setStatus("❌ Toevoegen mislukt, probeer opnieuw");
+    } finally {
+      setAddingTodo(false);
+    }
+  }
+
+  async function removeTodo(t: TodoRow) {
+    if (!confirm(`„${t.description}" van de lijst halen?`)) return;
+    setTodos((list) => list?.filter((x) => x.id !== t.id) ?? null);
+    try {
+      await api(`/api/todos?id=${encodeURIComponent(t.id)}`, { method: "DELETE" });
+    } catch {
+      setStatus("❌ Verwijderen mislukt");
+      loadExpenses(password!).catch(() => {});
     }
   }
 
@@ -478,11 +527,11 @@ export default function Home() {
         {!online && (
           <p className="offline-note">📴 Offline. Handmatig toevoegen werkt; het wordt verstuurd zodra je weer online bent.</p>
         )}
-        <button className="primary big" disabled={!online} onClick={() => camera.current?.click()}>
+        <button className="primary big" disabled={!online} onClick={() => pick(camera, null)}>
           📷 Foto maken
         </button>
         <div className="row">
-          <button className="secondary" disabled={!online} onClick={() => picker.current?.click()}>
+          <button className="secondary" disabled={!online} onClick={() => pick(picker, null)}>
             📄 Bestand kiezen
           </button>
           <button className="secondary" onClick={startManual}>
@@ -491,6 +540,53 @@ export default function Home() {
         </div>
         {inputs}
         {status && <p className="status">{status}</p>}
+
+        <section className="overview">
+          <label>Nog toe te voegen</label>
+          {todos && todos.length > 0 && (
+            <ul className="expenses todos">
+              {todos.map((t) => (
+                <li key={t.id}>
+                  <div className="expense-row">
+                    <a className="expense-main" href={t.url} target="_blank" rel="noreferrer">
+                      <span className="expense-title">{t.description || "Zonder omschrijving"}</span>
+                      {(t.vendor || t.amount != null) && (
+                        <span className="expense-meta">
+                          {[t.vendor, t.amount != null && `± ${euro(t.amount)}`].filter(Boolean).join(" · ")}
+                        </span>
+                      )}
+                    </a>
+                    <button className="secondary small" disabled={!online} onClick={() => pick(picker, t)}>
+                      📎 Factuur
+                    </button>
+                    <button className="icon-button" aria-label="Verwijderen" disabled={!online} onClick={() => removeTodo(t)}>
+                      ✕
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          <form className="todo-add" onSubmit={addTodo}>
+            <input
+              value={newTodo.description}
+              onChange={(e) => setNewTodo({ ...newTodo, description: e.target.value })}
+              placeholder="Nog geen factuur van…"
+              disabled={!online || addingTodo}
+            />
+            <input
+              className="todo-amount"
+              value={newTodo.amount}
+              onChange={(e) => setNewTodo({ ...newTodo, amount: e.target.value })}
+              placeholder="€"
+              inputMode="decimal"
+              disabled={!online || addingTodo}
+            />
+            <button className="primary" disabled={!online || addingTodo || !newTodo.description.trim()}>
+              {addingTodo ? "…" : "+"}
+            </button>
+          </form>
+        </section>
 
         <section className="overview">
           <label>Laatste uitgaven</label>
@@ -578,6 +674,7 @@ export default function Home() {
         ) : (
           <h1>Nieuwe uitgave</h1>
         )}
+        {todo && <p className="todo-note">📌 Factuur voor „{todo.description}" uit nog toe te voegen</p>}
         {status && <p className="status">{status}</p>}
 
         <section>

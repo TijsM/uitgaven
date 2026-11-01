@@ -8,6 +8,8 @@ Flow: take a photo (opens the camera on mobile) or pick a file. While you look a
 
 Vendor, category and payment method are Notion selects: the app lists the existing options live, and anything new (marked "nieuw") becomes a new option in Notion.
 
+"Nog toe te voegen" is a list of expenses you know about but don't have the invoice of yet. They're rows in the same database with the checkbox "Nog toe te voegen" ticked (the column is created on first use) and are left out of the overview. Tap "📎 Factuur" on an item when the invoice arrives: it is read like any other receipt, and saving fills in that same row and unticks it.
+
 ## Setup
 
 1. Create an internal integration at https://www.notion.so/profile/integrations and copy its token.

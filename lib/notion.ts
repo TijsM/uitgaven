@@ -81,7 +81,7 @@ export type Expense = {
   category?: string | null;
   notes?: string | null;
   paidBy?: string | null;
-  paymentMethod: string;
+  paymentMethod?: string | null;
   fileUploadId?: string | null;
   filename: string;
 };
@@ -99,7 +99,7 @@ export async function createExpense(e: Expense) {
       ...(e.category && { Categorie: { select: { name: e.category } } }),
       ...(e.notes && { Notities: { rich_text: text(e.notes) } }),
       ...(e.paidBy && { "Betaald door": { select: { name: e.paidBy } } }),
-      Betaalmethode: { select: { name: e.paymentMethod } },
+      ...(e.paymentMethod && { Betaalmethode: { select: { name: e.paymentMethod } } }),
       ...(e.fileUploadId && {
         Bon: { files: [{ type: "file_upload", file_upload: { id: e.fileUploadId }, name: e.filename }] },
       }),

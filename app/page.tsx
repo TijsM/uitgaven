@@ -21,6 +21,10 @@ const money = (n: number | null) => (n == null ? "" : n.toFixed(2).replace(".", 
 const euro = (n: number) => new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" }).format(n);
 const shortDate = (d: string) =>
   new Date(`${d}T12:00:00`).toLocaleDateString("nl-NL", { day: "numeric", month: "short" });
+// The fields an expense needs to count as complete; anything missing is highlighted in the overview.
+const missingFields = (e: { amount: number | null; date: string | null; paymentMethod: string | null }) =>
+  [e.amount == null && "bedrag", !e.date && "datum", !e.paymentMethod && "betaalmethode"].filter(Boolean) as string[];
+
 const parseMoney = (s: string) => (s.trim() ? Number(s.replace(/\s/g, "").replace(",", ".")) : null);
 
 // Shrink phone photos before upload: faster to send and well within API limits.
@@ -62,7 +66,13 @@ function Choice({
   return (
     <div className="chips">
       {all.map((name) => (
-        <button type="button" key={name} className={name === value ? "chip on" : "chip"} onClick={() => onChange(name)}>
+        <button
+          type="button"
+          key={name}
+          className={name === value ? "chip on" : "chip"}
+          // tapping the selected chip again clears it
+          onClick={() => onChange(name === value ? "" : name)}
+        >
           {name}
           {isNew && name === value && <span className="badge">nieuw</span>}
         </button>
@@ -234,6 +244,12 @@ export default function Home() {
     if (res.status === 401) return setPassword("");
     const data = await res.json();
     setMethods(data.paymentMethods);
+    // Forget a remembered payment method that was removed in Notion
+    const remembered = localStorage.getItem("method");
+    if (remembered && !data.paymentMethods.includes(remembered)) {
+      localStorage.removeItem("method");
+      setMethod((m) => (m === remembered ? "" : m));
+    }
     setCategories(data.categories);
     setVendors(data.vendors);
   }
@@ -307,12 +323,12 @@ export default function Home() {
           vat: draft.vat,
           category: draft.category || null,
           notes: draft.notes || null,
-          paymentMethod: method,
+          paymentMethod: method || null,
           fileUploadId: upload?.fileUploadId,
           filename: upload?.filename ?? file?.name ?? "",
         }),
       });
-      localStorage.setItem("method", method);
+      if (method) localStorage.setItem("method", method);
       const add = (list: string[], v: string) => (v && !list.includes(v) ? [...list, v] : list);
       setMethods(add(methods, method));
       setCategories(add(categories, draft.category));
@@ -364,6 +380,7 @@ export default function Home() {
     const monthTotal = (expenses ?? [])
       .filter((e) => e.date?.startsWith(month))
       .reduce((sum, e) => sum + (e.amount ?? 0), 0);
+    const incomplete = (expenses ?? []).filter((e) => missingFields(e).length > 0).length;
 
     return (
       <main>
@@ -388,25 +405,34 @@ export default function Home() {
             <label>Laatste uitgaven</label>
             {expenses && <span className="month-total">Deze maand {euro(monthTotal)}</span>}
           </div>
+          {incomplete > 0 && (
+            <p className="incomplete-note">
+              ⚠️ {incomplete} {incomplete === 1 ? "uitgave is" : "uitgaven zijn"} nog niet compleet
+            </p>
+          )}
           {expenses === null ? (
             <p className="hint">Laden…</p>
           ) : expenses.length === 0 ? (
             <p className="hint">Nog geen uitgaven.</p>
           ) : (
             <ul className="expenses">
-              {expenses.map((e) => (
-                <li key={e.id}>
-                  <a href={e.url} target="_blank" rel="noreferrer">
-                    <div className="expense-main">
-                      <span className="expense-title">{e.description || "Zonder omschrijving"}</span>
-                      <span className="expense-meta">
-                        {[e.date && shortDate(e.date), e.vendor, e.paymentMethod].filter(Boolean).join(" · ")}
-                      </span>
-                    </div>
-                    <span className="expense-amount">{e.amount != null ? euro(e.amount) : "–"}</span>
-                  </a>
-                </li>
-              ))}
+              {expenses.map((e) => {
+                const missing = missingFields(e);
+                return (
+                  <li key={e.id} className={missing.length ? "incomplete" : undefined}>
+                    <a href={e.url} target="_blank" rel="noreferrer">
+                      <div className="expense-main">
+                        <span className="expense-title">{e.description || "Zonder omschrijving"}</span>
+                        <span className="expense-meta">
+                          {[e.date && shortDate(e.date), e.vendor, e.paymentMethod].filter(Boolean).join(" · ")}
+                        </span>
+                        {missing.length > 0 && <span className="expense-missing">Ontbreekt: {missing.join(", ")}</span>}
+                      </div>
+                      <span className="expense-amount">{e.amount != null ? euro(e.amount) : "–"}</span>
+                    </a>
+                  </li>
+                );
+              })}
             </ul>
           )}
           {databaseUrl && (
@@ -494,15 +520,15 @@ export default function Home() {
           <button type="button" className="secondary" onClick={reset} disabled={saving}>
             Annuleren
           </button>
-          <button className="primary" disabled={analyzing || saving || !method || !draft.description.trim()}>
+          <button className="primary" disabled={analyzing || saving || !draft.description.trim()}>
             {saving
               ? "Opslaan…"
               : analyzing
                 ? "Bon wordt gelezen…"
                 : !draft.description.trim()
                   ? "Vul een omschrijving in"
-                  : !method
-                    ? "Kies een betaalmethode"
+                  : missingFields({ amount: parseMoney(draft.amount), date: draft.date || null, paymentMethod: method || null }).length
+                    ? "Opslaan als onvolledig"
                     : "Opslaan"}
           </button>
         </div>

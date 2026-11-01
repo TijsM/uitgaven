@@ -5,8 +5,8 @@ export async function POST(req: Request) {
   if (!authorized(req)) return unauthorized();
 
   const expense = (await req.json()) as Expense;
-  if (!expense.description?.trim() || !expense.paymentMethod) {
-    return Response.json({ error: "Omschrijving en betaalmethode zijn verplicht" }, { status: 400 });
+  if (!expense.description?.trim()) {
+    return Response.json({ error: "Omschrijving is verplicht" }, { status: 400 });
   }
 
   await createExpense(expense);

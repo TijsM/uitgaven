@@ -474,7 +474,15 @@ export default function Home() {
             Annuleren
           </button>
           <button className="primary" disabled={analyzing || saving || !method || !draft.description.trim()}>
-            {saving ? "Opslaan…" : "Opslaan"}
+            {saving
+              ? "Opslaan…"
+              : analyzing
+                ? "Bon wordt gelezen…"
+                : !draft.description.trim()
+                  ? "Vul een omschrijving in"
+                  : !method
+                    ? "Kies een betaalmethode"
+                    : "Opslaan"}
           </button>
         </div>
       </form>

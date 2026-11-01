@@ -2,8 +2,11 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Receipt } from "@/lib/extract";
-import type { ExpenseRow } from "@/lib/notion";
+import type { Expense, ExpenseRow } from "@/lib/notion";
+import { dequeue, enqueue, readOutbox, type Queued } from "@/lib/outbox";
 import { InstallPrompt } from "./install-prompt";
+
+type Row = ExpenseRow & { pending?: boolean };
 
 type Draft = {
   description: string;
@@ -209,6 +212,9 @@ export default function Home() {
   const [method, setMethod] = useState("");
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [online, setOnline] = useState(true);
+  const [outbox, setOutbox] = useState<Queued[]>([]);
+  const syncing = useRef(false);
 
   const camera = useRef<HTMLInputElement>(null);
   const picker = useRef<HTMLInputElement>(null);
@@ -220,9 +226,55 @@ export default function Home() {
 
   useEffect(() => {
     if (!password) return;
-    loadOptions(password);
-    loadExpenses(password);
+    loadOptions(password).catch(() => {});
+    loadExpenses(password).catch(() => {});
+    setOutbox(readOutbox());
+    setOnline(navigator.onLine);
+    sync(password);
+
+    const onOnline = () => {
+      setOnline(true);
+      sync(password);
+      loadOptions(password).catch(() => {});
+    };
+    const onOffline = () => setOnline(false);
+    const onVisible = () => document.visibilityState === "visible" && navigator.onLine && sync(password);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [password]);
+
+  // Send expenses that were saved offline, oldest first. Stops at the first failure and retries later.
+  async function sync(pw: string) {
+    if (syncing.current || !navigator.onLine || readOutbox().length === 0) return;
+    syncing.current = true;
+    let sent = 0;
+    try {
+      for (const item of readOutbox()) {
+        const res = await fetch("/api/expense", {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-app-password": pw },
+          body: JSON.stringify(item.expense),
+        });
+        if (!res.ok) break;
+        setOutbox(dequeue(item.id));
+        sent++;
+      }
+    } catch {
+      // still offline; next online/visibility event retries
+    } finally {
+      syncing.current = false;
+    }
+    if (sent > 0) {
+      setStatus(`✓ ${sent} offline ${sent === 1 ? "uitgave" : "uitgaven"} gesynchroniseerd met Notion`);
+      loadExpenses(pw).catch(() => {});
+    }
+  }
 
   async function api(path: string, init: RequestInit = {}) {
     const res = await fetch(path, { ...init, headers: { ...init.headers, "x-app-password": password! } });
@@ -315,31 +367,49 @@ export default function Home() {
   async function save(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
+    const expense: Expense = {
+      description: draft.description,
+      vendor: draft.vendor.trim() || null,
+      date: draft.date || null,
+      amount: parseMoney(draft.amount),
+      vat: draft.vat,
+      category: draft.category || null,
+      notes: draft.notes || null,
+      paymentMethod: method || null,
+      fileUploadId: upload?.fileUploadId,
+      filename: upload?.filename ?? file?.name ?? "",
+    };
+    let queued = false;
     try {
-      await api("/api/expense", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          description: draft.description,
-          vendor: draft.vendor.trim() || null,
-          date: draft.date || null,
-          amount: parseMoney(draft.amount),
-          vat: draft.vat,
-          category: draft.category || null,
-          notes: draft.notes || null,
-          paymentMethod: method || null,
-          fileUploadId: upload?.fileUploadId,
-          filename: upload?.filename ?? file?.name ?? "",
-        }),
-      });
+      if (!navigator.onLine) {
+        setOutbox(enqueue(expense));
+        queued = true;
+      } else {
+        try {
+          await api("/api/expense", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(expense),
+          });
+        } catch (err) {
+          // fetch throws a TypeError when there's no connection at all: keep it for later
+          if (!(err instanceof TypeError)) throw err;
+          setOutbox(enqueue(expense));
+          queued = true;
+        }
+      }
       if (method) localStorage.setItem("method", method);
       const add = (list: string[], v: string) => (v && !list.includes(v) ? [...list, v] : list);
       setMethods(add(methods, method));
       setCategories(add(categories, draft.category));
       setVendors(add(vendors, draft.vendor.trim()));
       reset();
-      setStatus("✓ Opgeslagen in Notion");
-      loadExpenses(password!);
+      if (queued) {
+        setStatus("📴 Offline bewaard, wordt naar Notion gestuurd zodra je weer online bent");
+      } else {
+        setStatus("✓ Opgeslagen in Notion");
+        loadExpenses(password!).catch(() => {});
+      }
     } catch {
       setStatus("❌ Opslaan mislukt, probeer opnieuw");
     } finally {
@@ -380,22 +450,39 @@ export default function Home() {
 
   if (!file && !manual) {
     // Group by the month of the receipt date (list is already sorted newest first)
-    const groups = new Map<string, ExpenseRow[]>();
-    for (const e of expenses ?? []) {
+    const pending: Row[] = outbox.map((q) => ({
+      id: q.id,
+      url: "",
+      description: q.expense.description,
+      vendor: q.expense.vendor ?? null,
+      date: q.expense.date ?? null,
+      amount: q.expense.amount ?? null,
+      category: q.expense.category ?? null,
+      paymentMethod: q.expense.paymentMethod ?? null,
+      pending: true,
+    }));
+    const rows: Row[] = [...pending, ...(expenses ?? [])].sort((a, b) =>
+      (b.date ?? "").localeCompare(a.date ?? ""),
+    );
+    const groups = new Map<string, Row[]>();
+    for (const e of rows) {
       const key = e.date?.slice(0, 7) ?? "";
       groups.set(key, [...(groups.get(key) ?? []), e]);
     }
-    const incomplete = (expenses ?? []).filter((e) => missingFields(e).length > 0).length;
+    const incomplete = rows.filter((e) => missingFields(e).length > 0).length;
 
     return (
       <main>
         <h1>Uitgaven</h1>
         <InstallPrompt />
-        <button className="primary big" onClick={() => camera.current?.click()}>
+        {!online && (
+          <p className="offline-note">📴 Offline. Handmatig toevoegen werkt; het wordt verstuurd zodra je weer online bent.</p>
+        )}
+        <button className="primary big" disabled={!online} onClick={() => camera.current?.click()}>
           📷 Foto maken
         </button>
         <div className="row">
-          <button className="secondary" onClick={() => picker.current?.click()}>
+          <button className="secondary" disabled={!online} onClick={() => picker.current?.click()}>
             📄 Bestand kiezen
           </button>
           <button className="secondary" onClick={startManual}>
@@ -412,9 +499,14 @@ export default function Home() {
               ⚠️ {incomplete} {incomplete === 1 ? "uitgave is" : "uitgaven zijn"} nog niet compleet
             </p>
           )}
-          {expenses === null ? (
-            <p className="hint">Laden…</p>
-          ) : expenses.length === 0 ? (
+          {outbox.length > 0 && (
+            <p className="pending-note">
+              ⏳ {outbox.length} {outbox.length === 1 ? "uitgave wacht" : "uitgaven wachten"} op verbinding
+            </p>
+          )}
+          {expenses === null && pending.length === 0 ? (
+            <p className="hint">{online ? "Laden…" : "Offline: nog geen opgeslagen overzicht."}</p>
+          ) : rows.length === 0 ? (
             <p className="hint">Nog geen uitgaven.</p>
           ) : (
             [...groups].map(([key, items]) => (
@@ -426,20 +518,31 @@ export default function Home() {
                 <ul className="expenses">
                   {items.map((e) => {
                     const missing = missingFields(e);
+                    const content = (
+                      <>
+                        <div className="expense-main">
+                          <span className="expense-title">{e.description || "Zonder omschrijving"}</span>
+                          <span className="expense-meta">
+                            {[e.date && shortDate(e.date), e.vendor, e.paymentMethod].filter(Boolean).join(" · ")}
+                          </span>
+                          {e.pending && <span className="expense-pending">⏳ Wacht op sync</span>}
+                          {missing.length > 0 && (
+                            <span className="expense-missing">Ontbreekt: {missing.join(", ")}</span>
+                          )}
+                        </div>
+                        <span className="expense-amount">{e.amount != null ? euro(e.amount) : "–"}</span>
+                      </>
+                    );
+                    const classes = [missing.length && "incomplete", e.pending && "pending"].filter(Boolean).join(" ");
                     return (
-                      <li key={e.id} className={missing.length ? "incomplete" : undefined}>
-                        <a href={e.url} target="_blank" rel="noreferrer">
-                          <div className="expense-main">
-                            <span className="expense-title">{e.description || "Zonder omschrijving"}</span>
-                            <span className="expense-meta">
-                              {[e.date && shortDate(e.date), e.vendor, e.paymentMethod].filter(Boolean).join(" · ")}
-                            </span>
-                            {missing.length > 0 && (
-                              <span className="expense-missing">Ontbreekt: {missing.join(", ")}</span>
-                            )}
-                          </div>
-                          <span className="expense-amount">{e.amount != null ? euro(e.amount) : "–"}</span>
-                        </a>
+                      <li key={e.id} className={classes || undefined}>
+                        {e.pending ? (
+                          <div className="expense-row">{content}</div>
+                        ) : (
+                          <a className="expense-row" href={e.url} target="_blank" rel="noreferrer">
+                            {content}
+                          </a>
+                        )}
                       </li>
                     );
                   })}

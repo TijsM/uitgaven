@@ -328,7 +328,7 @@ textarea {
   border-top: 1px solid #f0efee;
 }
 
-.expenses a {
+.expense-row {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -337,7 +337,7 @@ textarea {
   text-decoration: none;
 }
 
-.expenses a:active {
+a.expense-row:active {
   background: #f5f5f4;
 }
 
@@ -473,4 +473,40 @@ textarea {
   font-weight: 600;
   color: #44403c;
   font-variant-numeric: tabular-nums;
+}
+
+/* Offline */
+.offline-note,
+.pending-note {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.offline-note {
+  background: #e7e5e4;
+  color: #44403c;
+}
+
+.pending-note {
+  margin-bottom: 8px;
+  background: #e0f2fe;
+  color: #075985;
+}
+
+.expenses li.pending {
+  background: #f0f9ff;
+  box-shadow: inset 3px 0 0 #0ea5e9;
+}
+
+.expense-pending {
+  font-size: 12px;
+  font-weight: 600;
+  color: #0369a1;
+}
+
+.secondary:disabled {
+  opacity: 0.4;
 }

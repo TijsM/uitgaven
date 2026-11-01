@@ -1,8 +1,24 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { Receipt } from "@/lib/extract";
 
 const PAID_BY = ["Tijs", "Amber"];
+
+type Draft = {
+  description: string;
+  vendor: string;
+  date: string;
+  amount: string;
+  vat: string;
+  category: string;
+  notes: string;
+};
+
+const emptyDraft: Draft = { description: "", vendor: "", date: "", amount: "", vat: "", category: "", notes: "" };
+
+const money = (n: number | null) => (n == null ? "" : n.toFixed(2).replace(".", ","));
+const parseMoney = (s: string) => (s.trim() ? Number(s.replace(/\s/g, "").replace(",", ".")) : null);
 
 // Shrink phone photos before upload: faster to send and well within API limits.
 async function shrink(file: File): Promise<File> {
@@ -22,15 +38,70 @@ async function shrink(file: File): Promise<File> {
   }
 }
 
+// Notion-style picker: existing options as chips, plus creating a new one.
+function Choice({
+  options,
+  value,
+  onChange,
+  placeholder,
+}: {
+  options: string[];
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [text, setText] = useState("");
+  const all = value && !options.includes(value) ? [...options, value] : options;
+
+  return (
+    <div className="chips">
+      {all.map((name) => (
+        <button type="button" key={name} className={name === value ? "chip on" : "chip"} onClick={() => onChange(name)}>
+          {name}
+        </button>
+      ))}
+      {placeholder &&
+        (adding ? (
+          <input
+            className="chip-input"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), e.currentTarget.blur())}
+            onBlur={() => {
+              if (text.trim()) onChange(text.trim());
+              setText("");
+              setAdding(false);
+            }}
+            placeholder={placeholder}
+            autoFocus
+          />
+        ) : (
+          <button type="button" className="chip add" onClick={() => setAdding(true)}>
+            + Nieuw
+          </button>
+        ))}
+    </div>
+  );
+}
+
 export default function Home() {
   const [password, setPassword] = useState<string | null>(null);
+  const [methods, setMethods] = useState<string[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [upload, setUpload] = useState<{ fileUploadId: string | null; filename: string } | null>(null);
+  const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [paidBy, setPaidBy] = useState(PAID_BY[0]);
   const [method, setMethod] = useState("");
-  const [methods, setMethods] = useState<string[]>([]);
-  const [adding, setAdding] = useState(false);
-  const [newMethod, setNewMethod] = useState("");
+  const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-  const input = useRef<HTMLInputElement>(null);
+
+  const camera = useRef<HTMLInputElement>(null);
+  const picker = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setPassword(localStorage.getItem("password") ?? "");
@@ -39,45 +110,108 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!password) return;
-    fetch("/api/options", { headers: { "x-app-password": password } }).then(async (res) => {
-      if (res.status === 401) return logout();
-      const { paymentMethods } = await res.json();
-      setMethods(paymentMethods);
-    });
+    if (password) loadOptions(password);
   }, [password]);
 
-  function logout() {
-    localStorage.removeItem("password");
-    setPassword("");
-  }
-
-  function pickPaidBy(name: string) {
-    setPaidBy(name);
-    localStorage.setItem("paidBy", name);
-  }
-
-  function pickMethod(name: string) {
-    setMethod(name);
-    localStorage.setItem("method", name);
-    if (!methods.includes(name)) setMethods([...methods, name]);
-  }
-
-  async function upload(files: FileList | null) {
-    if (!files?.length || !password) return;
-    setStatus("Versturen…");
-    for (const original of Array.from(files)) {
-      const form = new FormData();
-      form.set("file", await shrink(original));
-      form.set("paidBy", paidBy);
-      form.set("paymentMethod", method);
-      const res = await fetch("/api/expense", { method: "POST", body: form, headers: { "x-app-password": password } });
-      if (res.status === 401) return logout();
-      if (!res.ok) return setStatus("❌ Mislukt, probeer opnieuw");
+  async function api(path: string, init: RequestInit = {}) {
+    const res = await fetch(path, { ...init, headers: { ...init.headers, "x-app-password": password! } });
+    if (res.status === 401) {
+      localStorage.removeItem("password");
+      setPassword("");
+      throw new Error("unauthorized");
     }
-    setStatus(`✓ Opgeslagen, staat zo in Notion`);
-    if (input.current) input.current.value = "";
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
   }
+
+  async function loadOptions(pw: string) {
+    const res = await fetch("/api/options", { headers: { "x-app-password": pw } });
+    if (res.status === 401) return setPassword("");
+    const data = await res.json();
+    setMethods(data.paymentMethods);
+    setCategories(data.categories);
+  }
+
+  async function start(picked: File | undefined) {
+    if (!picked) return;
+    setStatus(null);
+    setFile(picked);
+    setPreview(picked.type.startsWith("image/") ? URL.createObjectURL(picked) : null);
+    setDraft(emptyDraft);
+    setUpload(null);
+    setAnalyzing(true);
+    try {
+      const form = new FormData();
+      form.set("file", await shrink(picked));
+      const res: { fileUploadId: string | null; filename: string; receipt: Receipt | null } = await api("/api/analyze", {
+        method: "POST",
+        body: form,
+      });
+      setUpload({ fileUploadId: res.fileUploadId, filename: res.filename });
+      const r = res.receipt;
+      if (r)
+        setDraft({
+          description: r.description,
+          vendor: r.vendor ?? "",
+          date: r.date ?? "",
+          amount: money(r.amount),
+          vat: money(r.vat),
+          category: r.category ?? "",
+          notes: r.notes ?? "",
+        });
+      else setStatus("Kon de bon niet lezen, vul hem zelf in.");
+    } catch {
+      setStatus("Uploaden mislukt, vul hem zelf in of probeer opnieuw.");
+      setUpload({ fileUploadId: null, filename: picked.name });
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  function reset() {
+    if (preview) URL.revokeObjectURL(preview);
+    setFile(null);
+    setPreview(null);
+    if (camera.current) camera.current.value = "";
+    if (picker.current) picker.current.value = "";
+  }
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await api("/api/expense", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          description: draft.description,
+          vendor: draft.vendor || null,
+          date: draft.date || null,
+          amount: parseMoney(draft.amount),
+          vat: parseMoney(draft.vat),
+          category: draft.category || null,
+          notes: draft.notes || null,
+          paidBy,
+          paymentMethod: method,
+          fileUploadId: upload?.fileUploadId,
+          filename: upload?.filename ?? file?.name,
+        }),
+      });
+      localStorage.setItem("paidBy", paidBy);
+      localStorage.setItem("method", method);
+      if (!methods.includes(method)) setMethods([...methods, method]);
+      if (draft.category && !categories.includes(draft.category)) setCategories([...categories, draft.category]);
+      reset();
+      setStatus("✓ Opgeslagen in Notion");
+    } catch {
+      setStatus("❌ Opslaan mislukt, probeer opnieuw");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const set = (key: keyof Draft) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setDraft({ ...draft, [key]: e.target.value });
 
   if (password === null) return null;
 
@@ -99,66 +233,95 @@ export default function Home() {
       </main>
     );
 
+  const inputs = (
+    <>
+      <input ref={camera} type="file" accept="image/*" capture="environment" hidden onChange={(e) => start(e.target.files?.[0])} />
+      <input ref={picker} type="file" accept="image/*,application/pdf" hidden onChange={(e) => start(e.target.files?.[0])} />
+    </>
+  );
+
+  if (!file)
+    return (
+      <main>
+        <h1>Uitgaven</h1>
+        <button className="primary big" onClick={() => camera.current?.click()}>
+          📷 Foto maken
+        </button>
+        <button className="secondary" onClick={() => picker.current?.click()}>
+          📄 Bestand kiezen
+        </button>
+        {inputs}
+        {status && <p className="status">{status}</p>}
+      </main>
+    );
+
+  const loading = analyzing ? "Wordt gelezen…" : undefined;
+
   return (
     <main>
-      <h1>Uitgaven</h1>
-
-      <section>
-        <label>Betaald door</label>
-        <div className="chips">
-          {PAID_BY.map((name) => (
-            <button key={name} className={name === paidBy ? "chip on" : "chip"} onClick={() => pickPaidBy(name)}>
-              {name}
-            </button>
-          ))}
+      <form className="review" onSubmit={save}>
+        <div className="preview">
+          {preview ? <img src={preview} alt="Bon" /> : <span>📄 {file.name}</span>}
+          {analyzing && <div className="reading">Bon wordt gelezen…</div>}
         </div>
-      </section>
+        {status && <p className="status">{status}</p>}
 
-      <section>
-        <label>Betaalmethode</label>
-        <div className="chips">
-          {methods.map((name) => (
-            <button key={name} className={name === method ? "chip on" : "chip"} onClick={() => pickMethod(name)}>
-              {name}
-            </button>
-          ))}
-          {adding ? (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (newMethod.trim()) pickMethod(newMethod.trim());
-                setNewMethod("");
-                setAdding(false);
-              }}
-            >
-              <input
-                value={newMethod}
-                onChange={(e) => setNewMethod(e.target.value)}
-                onBlur={(e) => e.currentTarget.form?.requestSubmit()}
-                placeholder="Nieuwe rekening"
-                autoFocus
-              />
-            </form>
-          ) : (
-            <button className="chip add" onClick={() => setAdding(true)}>
-              + Nieuw
-            </button>
-          )}
+        <section>
+          <label>Omschrijving</label>
+          <input value={draft.description} onChange={set("description")} placeholder={loading} required disabled={analyzing} />
+        </section>
+        <div className="row">
+          <section>
+            <label>Bedrag €</label>
+            <input value={draft.amount} onChange={set("amount")} inputMode="decimal" placeholder={loading} disabled={analyzing} />
+          </section>
+          <section>
+            <label>BTW €</label>
+            <input value={draft.vat} onChange={set("vat")} inputMode="decimal" disabled={analyzing} />
+          </section>
         </div>
-      </section>
+        <div className="row">
+          <section>
+            <label>Datum</label>
+            <input type="date" value={draft.date} onChange={set("date")} disabled={analyzing} />
+          </section>
+          <section>
+            <label>Leverancier</label>
+            <input value={draft.vendor} onChange={set("vendor")} disabled={analyzing} />
+          </section>
+        </div>
+        <section>
+          <label>Categorie</label>
+          <Choice
+            options={categories}
+            value={draft.category}
+            onChange={(category) => setDraft({ ...draft, category })}
+            placeholder="Nieuwe categorie"
+          />
+        </section>
+        <section>
+          <label>Betaald door</label>
+          <Choice options={PAID_BY} value={paidBy} onChange={setPaidBy} />
+        </section>
+        <section>
+          <label>Betaalmethode</label>
+          <Choice options={methods} value={method} onChange={setMethod} placeholder="Nieuwe rekening" />
+        </section>
+        <section>
+          <label>Notities</label>
+          <input value={draft.notes} onChange={set("notes")} disabled={analyzing} />
+        </section>
 
-      <button className="primary big" disabled={!method} onClick={() => input.current?.click()}>
-        📷 Bon toevoegen
-      </button>
-      <input
-        ref={input}
-        type="file"
-        accept="image/*,application/pdf"
-        multiple
-        hidden
-        onChange={(e) => upload(e.target.files)}
-      />
-      {status && <p className="status">{status}</p>}
+        <div className="actions">
+          <button type="button" className="secondary" onClick={reset} disabled={saving}>
+            Annuleren
+          </button>
+          <button className="primary" disabled={analyzing || saving || !method || !draft.description.trim()}>
+            {saving ? "Opslaan…" : "Opslaan"}
+          </button>
+        </div>
+      </form>
+      {inputs}
     </main>
   );
 }

@@ -33,7 +33,7 @@ export type Expense = {
   notes?: string | null;
   paidBy: string;
   paymentMethod: string;
-  fileUploadId?: string;
+  fileUploadId?: string | null;
   filename: string;
 };
 

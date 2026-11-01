@@ -1,36 +1,16 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Uitgaven
 
-## Getting Started
+Snap a receipt or upload an invoice; it lands in the Notion database "Uitgaven" (under Pieter Kleijnstraat 19).
 
-First, run the development server:
+Flow: pick who paid and the payment method (both remembered per device), tap "Bon toevoegen", choose a photo or PDF. The server answers immediately and, in the background, uploads the file to Notion, has Claude read vendor/date/amount/VAT/category, and creates the row. If reading fails, the row is still created with the file attached and a "⚠️ Niet herkend" title.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+Payment methods come live from the Notion select options; a new one typed in the app becomes a new option in Notion.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Setup
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Create an internal integration at https://www.notion.so/profile/integrations and copy its token.
+2. In Notion, open the "Uitgaven" database → `•••` → Connections → add the integration.
+3. `cp .env.example .env.local` and fill in the values.
+4. `pnpm install && pnpm dev`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Deploy: `vercel` and set the same environment variables in the Vercel project.

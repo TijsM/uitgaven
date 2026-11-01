@@ -1,49 +1,111 @@
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-html {
-  height: 100%;
-}
-
-html,
-body {
-  max-width: 100vw;
-  overflow-x: hidden;
-}
-
-body {
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
 * {
   box-sizing: border-box;
-  padding: 0;
+}
+
+body {
   margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #fafaf9;
+  color: #1c1917;
 }
 
-a {
+main {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 32px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 28px;
+}
+
+label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #78716c;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+button,
+input {
+  font: inherit;
+  font-size: 16px;
+}
+
+.chip {
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px solid #d6d3d1;
+  background: white;
   color: inherit;
-  text-decoration: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
+.chip.on {
+  background: #1c1917;
+  border-color: #1c1917;
+  color: white;
+}
+
+.chip.add {
+  border-style: dashed;
+  color: #78716c;
+}
+
+input {
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid #d6d3d1;
+  width: 100%;
+}
+
+.chips input {
+  border-radius: 999px;
+  width: 180px;
+}
+
+.primary {
+  padding: 14px;
+  border: 0;
+  border-radius: 14px;
+  background: #1c1917;
+  color: white;
+  font-weight: 600;
+}
+
+.primary.big {
+  padding: 22px;
+  font-size: 18px;
+}
+
+.primary:disabled {
+  opacity: 0.35;
+}
+
+.status {
+  margin: 0;
+  text-align: center;
+  color: #57534e;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chips form {
+  display: contents;
 }

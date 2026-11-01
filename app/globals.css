@@ -37,12 +37,14 @@ label {
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
   font-size: 16px; /* 16px keeps iOS from zooming in on focus */
 }
 
-input {
+input,
+textarea {
   padding: 8px 12px;
   border-radius: 10px;
   border: 1px solid #d6d3d1;
@@ -51,7 +53,8 @@ input {
   min-height: 38px;
 }
 
-input:disabled {
+input:disabled,
+textarea:disabled {
   background: #f5f5f4;
 }
 
@@ -225,7 +228,8 @@ form {
 }
 
 /* Shimmer on the fields that are about to be filled in */
-.analyzing input:disabled {
+.analyzing input:disabled,
+.analyzing textarea:disabled {
   background: linear-gradient(90deg, #f5f5f4 0%, #e7e5e4 50%, #f5f5f4 100%);
   background-size: 200% 100%;
   animation: shimmer 1.2s linear infinite;
@@ -295,4 +299,11 @@ form {
 
 .combo-list li.on {
   font-weight: 600;
+}
+
+textarea {
+  display: block;
+  resize: none;
+  overflow: hidden;
+  line-height: 1.35;
 }

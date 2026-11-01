@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Receipt } from "@/lib/extract";
 
 type Draft = {
@@ -142,6 +142,37 @@ function Combo({
   );
 }
 
+// Textarea that grows with its content. singleLine turns Enter into "done" instead of a newline.
+function AutoText({
+  value,
+  onChange,
+  singleLine,
+  ...props
+}: Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, "onChange"> & {
+  value: string;
+  onChange: (v: string) => void;
+  singleLine?: boolean;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight + 2}px`;
+  }, [value]);
+
+  return (
+    <textarea
+      {...props}
+      ref={ref}
+      rows={1}
+      value={value}
+      onChange={(e) => onChange(singleLine ? e.target.value.replace(/\n/g, " ") : e.target.value)}
+      onKeyDown={(e) => singleLine && e.key === "Enter" && (e.preventDefault(), e.currentTarget.blur())}
+    />
+  );
+}
+
 export default function Home() {
   const [password, setPassword] = useState<string | null>(null);
   const [methods, setMethods] = useState<string[]>([]);
@@ -267,7 +298,7 @@ export default function Home() {
     }
   }
 
-  const set = (key: "description" | "date" | "amount" | "notes") => (e: React.ChangeEvent<HTMLInputElement>) =>
+  const set = (key: "date" | "amount") => (e: React.ChangeEvent<HTMLInputElement>) =>
     setDraft({ ...draft, [key]: e.target.value });
 
   if (password === null) return null;
@@ -330,7 +361,13 @@ export default function Home() {
 
         <section>
           <label>Omschrijving</label>
-          <input value={draft.description} onChange={set("description")} required disabled={analyzing} />
+          <AutoText
+            value={draft.description}
+            onChange={(description) => setDraft({ ...draft, description })}
+            singleLine
+            required
+            disabled={analyzing}
+          />
         </section>
         <div className="row">
           <section>
@@ -369,7 +406,7 @@ export default function Home() {
         </section>
         <section>
           <label>Notities</label>
-          <input value={draft.notes} onChange={set("notes")} disabled={analyzing} />
+          <AutoText value={draft.notes} onChange={(notes) => setDraft({ ...draft, notes })} disabled={analyzing} />
         </section>
 
         <div className="actions">
